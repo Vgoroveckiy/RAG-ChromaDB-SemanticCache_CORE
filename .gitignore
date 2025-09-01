@@ -22,6 +22,8 @@ data/
 source_doc_busines/
 source_doc_estate/
 tmp_documents/
+chunk_analyzer/test_embeding
+chunk_analyzer/test_embeding_result
 law/
 
 # OS files

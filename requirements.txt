@@ -6,7 +6,7 @@ langchain-openai
 pypdf
 unstructured
 unstructured-inference
-unstructured-pdf-image
+unstructured[pdf-image]
 striprtf
 python-dotenv
 transformers
@@ -17,3 +17,5 @@ bitsandbytes
 huggingface-hub
 scipy
 numpy
+aiogram
+gigachat

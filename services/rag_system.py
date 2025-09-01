@@ -11,6 +11,8 @@ from core.llm_manager import create_llm_provider
 from config import Config, config
 from managers.embedding_manager import EmbeddingManager
 from managers.vector_db_manager import VectorDatabase
+
+# Удаляем циклический импорт
 from services.indexing_service import (
     parse_files,
     cleanup_deleted_files,
@@ -29,20 +31,30 @@ class RAGSystem:
         self.vector_db = VectorDatabase(
             config.CHROMA_DB_PATH, config.CHROMA_CACHE_PATH, self.embedding_manager
         )
-        self.llm_provider = None  # Инициализация перенесена в initialize()
+        self.llm_provider = None
         self.llm = None
         self.qa_chain = None
 
     def initialize(self):
-        """Initialize RAG system components."""
-        # Инициализация векторной базы и других компонентов
+        """Initialize RAG system with indexing"""
         self.vector_db.load_or_create()
         self.vector_db.load_or_create_cache()
         cleanup_deleted_files(self.vector_db, self.config.INPUT_DIR)
         parse_files(self.config.INPUT_DIR, self.vector_db)
-        print("Инициализация завершена")
+        print("Инициализация с индексацией завершена")
 
-        # Инициализируем LLM провайдер
+        self._init_llm()
+
+    def load_for_query(self):
+        """Load existing DB for querying without indexing"""
+        self.vector_db.load_or_create()
+        self.vector_db.load_or_create_cache()
+        print("Векторная база загружена")
+
+        self._init_llm()
+
+    def _init_llm(self):
+        """Initialize LLM components"""
         self.llm_provider = create_llm_provider(self.config.__dict__)
         self.llm = self.llm_provider.get_llm()
         self._init_chains()
@@ -74,14 +86,15 @@ class RAGSystem:
         """Инициализация цепочек с учетом типов документов"""
         prompts = {
             "legal": PromptTemplate(
-                template="""Вы юридический ассистент. Анализируйте документы и отвечайте точно.
+                template="""Вы юридический ассистент. Анализируйте документы и отвечайте точно. Отвечай только по информации из контекста. 
+                            Если ответа нет в контексте, скажите "Информация не найдена".
                             Контекст: {context}
                             Вопрос: {input}  # Изменено с question на input
                             Ответ должен содержать ссылки на конкретные статьи или разделы.""",
                 input_variables=["context", "input"],  # Обновлено
             ),
             "qa": PromptTemplate(
-                template="""Отвечайте кратко и по делу на вопросы пользователя.
+                template="""Ответьте на вопрос на основе предоставленного контекста.
                             Вопрос: {input}  # Изменено
                             Контекст: {context}
                             Если ответа нет в контексте, скажите "Информация не найдена".""",
@@ -105,6 +118,10 @@ class RAGSystem:
         from langchain.chains.combine_documents import create_stuff_documents_chain
 
         available_types = self.get_available_doc_types() or ["default"]
+
+        # Гарантируем создание цепи для типа "default" в любом случае
+        if "default" not in available_types:
+            available_types.append("default")
 
         for doc_type in available_types:
             prompt = prompts.get(doc_type, prompts["default"])
@@ -210,49 +227,18 @@ def clear_semantic_cache(vector_db: VectorDatabase):
 
 def run_indexing(vector_db: VectorDatabase):
     """Run document indexing."""
-    rag = RAGSystem(config)
-    rag.vector_db = vector_db
-    rag.initialize()
-    rag.close()
+    # Закрываем текущее соединение перед повторным открытием
+    vector_db.close()
+    gc.collect()
+
+    # Пересоздаем соединение
+    vector_db.load_or_create()
+    vector_db.load_or_create_cache()
+
+    # Выполняем индексацию
+    cleanup_deleted_files(vector_db, config.INPUT_DIR)
+    parse_files(config.INPUT_DIR, vector_db)
+    print("Индексация завершена")
 
 
-def run_interactive_chat(vector_db: VectorDatabase):
-    """Run interactive chat with proper resource cleanup"""
-    rag = None
-    try:
-        rag = RAGSystem(config)
-        rag.initialize()
-
-        print("\n=== Интерактивный режим ===")
-        print("Введите ваш вопрос или одну из команд:")
-        print("- 'exit', 'quit', 'q' - выход")
-        print("- 'menu' - вернуться в меню")
-
-        while True:
-            try:
-                user_input = input("\nВаш запрос: ").strip()
-
-                if user_input.lower() in ("exit", "quit", "q"):
-                    print("Завершение сеанса...")
-                    break
-                elif user_input.lower() == "menu":
-                    print("Возврат в главное меню...")
-                    break
-
-                if user_input:
-                    answer = rag.query(user_input, use_cache=False)
-                    print(f"\nОтвет: {answer}")
-
-            except KeyboardInterrupt:
-                print("\nПрервано пользователем")
-                break
-            except Exception as e:
-                print(f"\nОшибка: {e}")
-
-    finally:
-        if rag:
-            rag.close()
-        print("Ресурсы освобождены.")
-
-
-# Этот код перенесен в main.py
+# Удаляем функцию run_interactive_chat, так как она больше не нужна

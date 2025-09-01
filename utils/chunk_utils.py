@@ -24,7 +24,8 @@ def process_json_file(file_path: str) -> List[Document]:
     chunks = []
     for i, item in enumerate(catalog_data):
         item_path = f"{file_path}#{i}"
-        item_content = json.dumps(item, ensure_ascii=False, sort_keys=True)
+
+        item_content = json.dumps(item, ensure_ascii=False)
 
         metadata = {
             "source": base_filename,

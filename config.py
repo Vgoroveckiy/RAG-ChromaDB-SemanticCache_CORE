@@ -15,22 +15,52 @@ class Config:
         self.CHROMA_DB_PATH = "./chroma_db"
         self.CHROMA_CACHE_PATH = "./chroma_cache"
 
-        # Модели
+        # Модель для эмбеддинга
         self.EMBEDDING_MODEL = "ai-forever/sbert_large_nlu_ru"
         self.LLM_TEMPERATURE = 0.5
 
         # Настройки провайдеров LLM
-        self.LLM_PROVIDER = "openai"  # openai | yandex | sber | другие
+        self.LLM_PROVIDER = "sber"  # openai | yandex | sber | openrouter
 
-        # Модели для провайдеров (обязательные)
+        # Модели для провайдеров LLM (обязательные)
         self.OPENAI_MODEL_ID = "gpt-4o-mini"  # Модель для OpenAI
         self.YANDEX_MODEL_ID = "general"  # Модель для Yandex
-        self.SBER_MODEL_ID = "sber-large"  # Модель для Sber
+        self.SBER_MODEL_ID = "GigaChat"  # Модель для Sber
 
-        # API ключи
-        self.YANDEX_API_KEY = ""  # API-ключ для Yandex
-        self.YANDEX_IAM_TOKEN = ""  # IAM-токен для Yandex Cloud
-        self.SBER_API_KEY = ""  # API-ключ для Sber LLM
+        # Платные модели для OpenRouter
+        # self.OPENROUTER_MODEL_ID = "openai/gpt-oss-20b"  # Модель для OpenRouter
+        # self.OPENROUTER_MODEL_ID = (
+        #     "deepseek/deepseek-chat-v3-0324"  # Модель для OpenRouter
+        # )
+
+        # Бесплатные модели для OpenRouter
+        # self.OPENROUTER_MODEL_ID = "openai/gpt-oss-20b:free"  # Модель для OpenRouter
+        self.OPENROUTER_MODEL_ID = (
+            "deepseek/deepseek-chat-v3-0324:free"  # Модель для OpenRouter
+        )
+
+        # API ключи теперь загружаются из переменных окружения
+        self.YANDEX_API_KEY = os.getenv("YANDEX_API_KEY", "")  # API-ключ для Yandex
+        self.YANDEX_IAM_TOKEN = os.getenv(
+            "YANDEX_IAM_TOKEN", ""
+        )  # IAM-токен для Yandex Cloud
+        self.SBER_API_KEY = os.getenv("SBER_API_KEY", "")  # API-ключ для Sber LLM
+        self.OPENROUTER_API_KEY = os.getenv(
+            "OPENROUTER_API_KEY", ""
+        )  # API key for OpenRouter
+
+        # Провайдеры чата
+        self.CHAT_PROVIDERS = {
+            "console": {
+                "enabled": True,
+                "class": "providers.console_provider.ConsoleProvider",
+            },
+            "telegram": {
+                "enabled": True,
+                "class": "providers.telegram_provider.TelegramProvider",
+                "params": {"token": os.getenv("TELEGRAM_TOKEN", "")},
+            },
+        }
 
         # Настройки обработки документов
         self.SUPPORTED_EXTENSIONS = (
@@ -121,14 +151,24 @@ def validate_config(config):
     elif provider == "yandex":
         if not config.YANDEX_MODEL_ID:
             raise ValueError("YANDEX_MODEL_ID must be set for Yandex provider")
-        if not config.YANDEX_API_KEY and not config.YANDEX_IAM_TOKEN:
-            raise ValueError("Either YANDEX_API_KEY or YANDEX_IAM_TOKEN must be set")
+        if not os.getenv("YANDEX_API_KEY") and not os.getenv("YANDEX_IAM_TOKEN"):
+            raise ValueError(
+                "Either YANDEX_API_KEY or YANDEX_IAM_TOKEN environment variable must be set in .env"
+            )
 
     elif provider == "sber":
         if not config.SBER_MODEL_ID:
             raise ValueError("SBER_MODEL_ID must be set for Sber provider")
-        if not config.SBER_API_KEY:
-            raise ValueError("SBER_API_KEY must be set for Sber provider")
+        if not os.getenv("SBER_API_KEY"):
+            raise ValueError("SBER_API_KEY environment variable must be set in .env")
+
+    elif provider == "openrouter":
+        if not config.OPENROUTER_MODEL_ID:
+            raise ValueError("OPENROUTER_MODEL_ID must be set for OpenRouter provider")
+        if not os.getenv("OPENROUTER_API_KEY"):
+            raise ValueError(
+                "OPENROUTER_API_KEY environment variable must be set in .env"
+            )
 
     else:
         raise ValueError(f"Unsupported provider: {provider}")
@@ -137,11 +177,7 @@ def validate_config(config):
 # Проверка конфигурации
 validate_config(config)
 
-# Проверка API ключа OpenAI
-api_key = os.getenv("OPENAI_API_KEY")
-if not api_key:
-    raise ValueError("OPENAI_API_KEY not found in .env file")
-os.environ["OPENAI_API_KEY"] = api_key
+# Проверка API ключей теперь выполняется в validate_config()
 
 # Создание директорий
 os.makedirs(config.INPUT_DIR, exist_ok=True)
